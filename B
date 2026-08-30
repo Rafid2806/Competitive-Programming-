@@ -1,0 +1,36 @@
+#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n;
+    vector<string> words(n);
+    int i = 0;
+    for (i = 0; i < n; i++){
+        cin >> words[i];
+    }
+    for (i = 0; i < n; i++){
+        for (auto& c: words[i]){
+            c = tolower(c);
+        }
+    }
+    int counter = 0;
+    int max_count = 0;
+    i = 0;
+    for (i = 0; i < n; i++){
+        string current = words[i];
+        counter = 0;
+        for (int j = 0; j < n; j++){
+            if (words[j] == current){
+                counter++;
+            }
+        }
+        if (counter > max_count){
+            max_count = counter;
+        }
+    }
+    cout << max_count;
+
+}
+// It is a working solution but I could have done it very easily by using a map, so beginner mistake
+// It was my second competition
