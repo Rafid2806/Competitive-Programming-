@@ -13,3 +13,58 @@ int main() {
         cout << "Nein\n";
     }
 }
+
+
+
+// Made an embarrassing mistake by using a nested an if structure which looked like this below:
+
+/*
+#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    int a,b, c,d, e;
+    float f;
+    cin >> a >> b;
+    c = a+b;
+    d = a-b;
+    e = a*b;
+    f = a/b;
+    if (c == 9){
+        cout << "Nine";
+        return 0;
+    }
+    else{
+        if(d == 9){
+            cout << "Nine";
+            return 0;
+        }
+        else{
+            if (e == 9){
+                cout << "Nine";
+                return 0;
+            }
+            else{
+                if (f == 9.0){
+                    cout << "Nine";
+                    return 0;
+                }
+                else{
+                    cout << "Nein";
+                    return 0;
+                }
+                cout << "Nein";
+                return 0;
+            }
+            cout << "Nein";
+            return 0;
+        }
+        cout << "Nein";
+        return 0;
+    }
+
+
+
+
+} */
+// I learned about the problem of integer division in C++ and also how to bypass the truncation of integer division which is shown in the og solution
