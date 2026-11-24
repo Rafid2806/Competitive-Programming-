@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# cprun — compile a C/C++ solution and test it against sample files.
+#
+#   cprun A.cpp            compile, then run every A*.in test (compares with
+#                          matching .out / .ans files if present); if there
+#                          are no tests, runs interactively (type input,
+#                          finish with Ctrl+D)
+#   cprun A.cpp -i         force interactive mode even if tests exist
+#   cprun A.cpp -s         build with sanitizers (catches out-of-bounds, UB)
+#
+# Test files next to the source:  A.in / A.out   or   A1.in A1.out, A2.in ...
+set -u
+
+src="" ; interactive=0 ; sanitize=0
+for arg in "$@"; do
+  case "$arg" in
+    -i) interactive=1 ;;
+    -s) sanitize=1 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    *) src="$arg" ;;
+  esac
+done
+[ -z "$src" ] && { echo "usage: cprun FILE.cpp|FILE.c [-i] [-s]"; exit 1; }
+[ -f "$src" ] || { echo "cprun: no such file: $src"; exit 1; }
+
+here="$(cd "$(dirname "$0")" && pwd)"
+dir="$(dirname "$src")"; file="$(basename "$src")"; name="${file%.*}"; ext="${file##*.}"
+# Binaries live in $HOME, not next to the source: Android's shared storage
+# (/sdcard, used by editors like Acode) does not allow running programs.
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/cprun"; mkdir -p "$cache"
+key="$(cd "$dir" && pwd)/$file"; bin="$cache/$(printf '%s' "$key" | cksum | cut -d' ' -f1)-$name"
+
+red=$'\e[31m'; green=$'\e[32m'; yellow=$'\e[33m'; bold=$'\e[1m'; off=$'\e[0m'
+
+flags=(-O2 -DLOCAL -Wall -Wextra -Wshadow -Wno-unused-parameter)
+[ "$sanitize" = 1 ] && flags=(-O1 -g -DLOCAL -Wall -fsanitize=address,undefined -fno-omit-frame-pointer)
+
+case "$ext" in
+  cpp|cc|cxx) cc="${CXX:-$(command -v clang++ || command -v g++)}"; std="-std=c++20"
+              flags+=(-I"$here/include") ;;
+  c)          cc="${CC:-$(command -v clang || command -v gcc)}"; std="-std=c17"; flags+=(-lm) ;;
+  *) echo "cprun: unsupported extension .$ext"; exit 1 ;;
+esac
+
+# Recompile only if the source is newer than the binary (or flags changed).
+stamp="$bin.flags"; want="$cc $std ${flags[*]}"
+if [ ! -x "$bin" ] || [ "$src" -nt "$bin" ] || [ "$(cat "$stamp" 2>/dev/null)" != "$want" ]; then
+  echo "${yellow}compiling $file...${off}"
+  if ! "$cc" $std "${flags[@]}" "$src" -o "$bin"; then
+    if [ "$sanitize" = 1 ]; then
+      # Full ASan isn't available on every Android/Termux build — fall back to
+      # trapping UBSan + bounds-checked STL (vector[i] out of range aborts).
+      echo "${yellow}full sanitizers unavailable, using lightweight checks${off}"
+      flags=(-O1 -g -DLOCAL -Wall -fsanitize=undefined -fsanitize-trap=undefined
+             -D_GLIBCXX_DEBUG -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG
+             -D_LIBCPP_ENABLE_ASSERTIONS=1)
+      [ "$ext" = c ] && flags+=(-lm) || flags+=(-I"$here/include")
+      want="$cc $std ${flags[*]}"
+      "$cc" $std "${flags[@]}" "$src" -o "$bin" || { echo "${red}${bold}COMPILATION ERROR${off}"; exit 1; }
+    else
+      echo "${red}${bold}COMPILATION ERROR${off}"; exit 1
+    fi
+  fi
+  echo "$want" > "$stamp"
+fi
+
+shopt -s nullglob
+tests=("$dir/$name".in "$dir/$name"[0-9]*.in "$dir/$name"_*.in)
+if [ "$interactive" = 1 ] || [ ${#tests[@]} -eq 0 ]; then
+  echo "${yellow}running $name (type input, Ctrl+D to finish)${off}"
+  "$bin"; exit $?
+fi
+
+pass=0; total=0
+for tin in "${tests[@]}"; do
+  total=$((total+1)); base="${tin%.in}"; exp=""
+  for e in "$base.out" "$base.ans"; do [ -s "$e" ] && { exp="$e"; break; }; done
+  got="$(mktemp)"
+  start=$(date +%s%N)
+  timeout "${TL:-5}" "$bin" < "$tin" > "$got"; code=$?
+  ms=$(( ($(date +%s%N) - start) / 1000000 ))
+  label="${bold}$(basename "$tin")${off} (${ms} ms)"
+  if [ $code -eq 124 ]; then
+    echo "${red}TLE${off} $label"
+  elif [ $code -ne 0 ]; then
+    echo "${red}RUNTIME ERROR (exit $code)${off} $label"
+  elif [ -z "$exp" ]; then
+    echo "${yellow}RAN${off} $label — no expected output, got:"; cat "$got"
+  elif diff -q -w -B "$got" "$exp" >/dev/null; then
+    echo "${green}OK${off} $label"; pass=$((pass+1))
+  else
+    echo "${red}WRONG ANSWER${off} $label"
+    echo "  --- input ---";    sed 's/^/  /' "$tin"
+    echo "  --- expected ---"; sed 's/^/  /' "$exp"
+    echo "  --- yours ---";    sed 's/^/  /' "$got"
+  fi
+  rm -f "$got"
+done
+echo "${bold}$pass / $total passed${off}"
+[ $pass -eq $total ]

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# cpnew — start a new problem from the template.
+#   cpnew A            creates A.cpp (C++ template) and empty A.in / A.out
+#   cpnew A c          creates A.c instead
+#   cpnew cf/1900/A    creates folders as needed
+set -eu
+[ $# -ge 1 ] || { echo "usage: cpnew NAME [c|cpp]"; exit 1; }
+here="$(cd "$(dirname "$0")/.." && pwd)"
+name="$1"; lang="${2:-cpp}"
+mkdir -p "$(dirname "$name")"
+target="$name.$lang"
+if [ -e "$target" ]; then echo "cpnew: $target already exists"; exit 1; fi
+cp "$here/templates/template.$lang" "$target"
+touch "$name.in" "$name.out"
+echo "created $target, $name.in, $name.out"
+echo "paste the sample input into $name.in and expected output into $name.out, then: cprun $target"
